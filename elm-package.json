@@ -1,7 +1,7 @@
 {
     "version": "1.0.0",
     "summary": "Example Webapp Built with Elm to Query the National Weather Service API",
-    "repository": "https://github.com/auth0-blog/elm-with-jwt-api.git",
+    "repository": "https://github.com/dcrayne/elm-weatherapp.git",
     "license": "MIT",
     "source-directories": [
         "src",
