@@ -1,0 +1,3 @@
+var _dcrayne$elm_weatherapp$Repl$t_s_o_l = {ctor: '_Tuple0'};
+var _dcrayne$elm_weatherapp$Repl$getContent = _elm_lang$http$Http$getString('www.ncdc.noaa.gov/cdo-web/api/v2/data?datasetid=GHCND&locationid=ZIP:28801&startdate=2010-05-01&enddate=2010-05-01');
+var _dcrayne$elm_weatherapp$Repl$d_e_l_t_r_o_n_3_0_3_0 = _dcrayne$elm_weatherapp$Repl$getContent;
