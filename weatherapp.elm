@@ -8,7 +8,7 @@ import Json.Decode exposing (..)
 
 main =
   Html.program
-    { init = init "97202"
+    { init = init 
     , view = view
     , update = update
     , subscriptions = subscriptions
@@ -25,12 +25,13 @@ type alias Model =
   , startDate   : String
   , endDate     : String
   , weatherData : String
+  , resultCount : Int
   }
 
 
-init : String -> (Model, Cmd Msg)
-init zipCode =
-  (Model zipCode "" "" "" "", Cmd.none)
+init : (Model, Cmd Msg)
+init =
+  (Model "" "" "" "" "" 0, Cmd.none)
 
 
 
@@ -40,6 +41,7 @@ init zipCode =
 type Msg
   = GetWeather
   | NewWeatherData (Result Http.Error String)
+  | SetZipCode String
 
 
 update : Msg -> Model -> (Model, Cmd Msg)
@@ -48,18 +50,19 @@ update msg model =
     GetWeather ->
       (model, getWeather model.zipCode)
 
+    SetZipCode zipCode ->
+      (Model zipCode "" "" "" model.weatherData 0, Cmd.none)
+
     NewWeatherData (Ok newWeatherData) ->
-      case decodeJson of
+      case decodeResultCount of
         Err msg ->
-          (Model model.zipCode "" "" "" (newWeatherData ++ msg), Cmd.none)
+          (Model model.zipCode "" "" "" (newWeatherData ++ msg) 0, Cmd.none)
            
         Ok value ->
-          (Model model.zipCode "" "" "" (newWeatherData ++ toString value), Cmd.none)
-
---      (Model model.zipCode "" "" "" newWeatherData, Cmd.none)
+          (Model model.zipCode "" "" "" newWeatherData value, Cmd.none)
 
     NewWeatherData (Err _) ->
-      (Model model.zipCode "" "" "" "Error while sending", Cmd.none)
+      (Model model.zipCode "" "" "" "Error while sending" 0, Cmd.none)
 
 
 
@@ -70,9 +73,11 @@ view : Model -> Html Msg
 view model =
   div []
     [ h2 []  [text model.zipCode]
+    , input [ type_ "text", placeholder "Enter Zip Code", onInput SetZipCode ] []
     , button [ onClick GetWeather ] [ text "Get Weather" ]
     , br []  []
     , p  []  [ text model.weatherData ]
+    , h3 []  [ text ("Result Count: " ++ toString model.resultCount) ]
     ]
 
 
@@ -89,12 +94,14 @@ subscriptions model =
 -- HTTP
 
 
+--getWeatherDataTypes : Cmd Msg
+
 getWeather : String -> Cmd Msg
 getWeather zipCode = 
   let weatherRequest = 
     { method = "GET"
     , headers = [Http.header "token" "hntEzDOlCPVILyHVyUIAzvQkvPbrkEBG"]
-    , url = "https://www.ncdc.noaa.gov/cdo-web/api/v2/data?datasetid=GHCND&locationid=ZIP:28801&startdate=2010-05-01&enddate=2010-05-01"
+    , url = "https://www.ncdc.noaa.gov/cdo-web/api/v2/data?datasetid=GHCND&locationid=ZIP:" ++ zipCode ++ "&startdate=2010-05-01&enddate=2010-05-01"
     , body = Http.emptyBody
     , expect = Http.expectString
 --    , expect = expectStringResponse (\_ -> Ok ())
@@ -108,6 +115,11 @@ getWeather zipCode =
 decodeJson : Result String Int
 decodeJson = decodeString (field "metadata" (field "resultset" (field "offset" int))) json
 
+--decodeResultCount : Model -> Result String Int
+--decodeResultCount model = decodeString (field "metadata" (field "resultset" (field "count" int))) model.weatherData
+
+decodeResultCount : Result String Int
+decodeResultCount = decodeString (field "metadata" (field "resultset" (field "count" int))) json
 
 json : String
 json = """
