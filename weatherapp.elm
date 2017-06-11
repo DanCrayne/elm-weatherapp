@@ -225,7 +225,7 @@ makeGhcndTable listOfValues =
 makeGhcndTableBody : List GhcndData -> Html Msg
 makeGhcndTableBody listOfValues = 
   listOfValues
-    |> List.map (\a -> (makeGhcndTableRow a))
+    |> List.map (\item -> (makeGhcndTableRow item))
     |> tbody []
   
 
@@ -242,12 +242,14 @@ makeGhcndTableRow data =
 
 makeGhcndTableHeader : Html Msg
 makeGhcndTableHeader = 
-  tr [] [
-     td [] [ text "Date" ]
-   , td [] [ text "Data Type" ]
-   , td [] [ text "Station" ]
-   , td [] [ text "Attributes" ]
-   , td [] [ text "Value" ]
+  thead [] [
+    tr [] [
+       th [] [ text "Date" ]
+     , th [] [ text "Data Type" ]
+     , th [] [ text "Station" ]
+     , th [] [ text "Attributes" ]
+     , th [] [ text "Value" ]
+     ]
   ]
 
 
