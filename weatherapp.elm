@@ -41,17 +41,11 @@ init : (Model, Cmd Msg)
 init =
   (Model "" 
          "" 
-         defaultDates.startDate 
-         defaultDates.endDate 
+         ""
+         ""
          "" 
          "GHCND" 
          False, Cmd.none)
-
-
-defaultDates = 
-  { startDate = "2017-03-01"
-  , endDate = "2017-03-02"
-  }
 
 
 
@@ -80,7 +74,6 @@ update msg model =
              model.dataSetId
              True
            , getWeather model)
---      (model, getWeather model)
 
     SetZipCode zipCode ->
       (Model zipCode 
@@ -160,17 +153,15 @@ update msg model =
 view : Model -> Html Msg
 view model =
   div []
-    [ h2 []  [ text "NOAA Weather Data Query" ]
+    [ h2     []  [ text "NOAA Weather Data Query" ]
 
     , input  [ type_ "text", placeholder "Enter Zip Code", 
                              onInput SetZipCode ] []
 
     , input  [ type_ "text", placeholder "Start Date" 
-                           , defaultValue defaultDates.startDate
                            , onInput SetStartDate ] []
 
     , input  [ type_ "text", placeholder "End Date" 
-                           , defaultValue defaultDates.endDate
                            , onInput SetEndDate ] []
 
     , button [ onClick GetWeather ] [ text "Get Weather" ]
@@ -206,7 +197,6 @@ updateWeatherData model =
   let data =
     decodeString (field "results" 
                    (Json.Decode.list ghcndData)) model.weatherData 
-
   in
      case data of
        Ok listOfValues ->
