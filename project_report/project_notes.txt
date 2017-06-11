@@ -4,13 +4,14 @@ Abstract
 This project uses a web application language and framework called Elm
 (http://www.elm-lang.org) to make a simple program which queries
 a web API for JSON data based on front-end input, and then parses it, and 
-returns a simple HTML table of the results.
+finally returns a simple HTML table of the results.
 
 This example is very simple, and should serve as a basic introduction to
 the Elm language and framework. Much of the information presented was based
 on online examples either directly or indirectly (especially the Elm tutorial
-https://guide.elm-lang.org/); links will be provided as appropriate, and 
-hopefully I have given credit where it's due!
+https://guide.elm-lang.org/); most of the original work can be found in the
+sections including and following section 4; links to sources will be provided 
+as appropriate, and hopefully I have given credit where it's due!
 
 Please note that this document assumes no prior knowledge of any of the
 technologies listed; so if you already know what JSON, etc. are then please
@@ -966,3 +967,20 @@ provide a listing of locations where the data is available.
 Another interesting modification would be to move the datasets into a List
 instead of a single value; this way, weather in different times and/or places
 could be compared.
+
+Working with Elm for a first project was highly frustrating at times, although
+now that it is done, I feel that extending the project would be simple, after
+struggling through a simple initial project. A source of difficulty, I found,
+was the lack of documentation. In most instances, when I was looking for 
+specific advice, I was pointed back to the tutorial, which contains more 
+general advise that tends to be trivial. Also, at times, a search for 
+documentation would yield older document revisions, which are no longer 
+relevant, as the system seems to be in a state of flux (but, I should stop 
+complaining and start contributing :). Particularly, creating the decoder for 
+the list of objects was difficult, as most examples that I found were somewhat 
+trivial.
+
+However, with enough sleuthing, correct examples and advice can be found, and
+Elm is fairly intuitive, so coming up with a solution becomes a short process
+once you've worked through several examples; the authors of the tutorial really
+tried to communicate the importance working through examples!
