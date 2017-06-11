@@ -382,16 +382,17 @@ package. The type of these functions is as follows:
       -> Html msg
 
 So, we take the name of the element as a String, along with a <em>List</em> 
-of attributes for our element (possibly containing some message to send to 
-<em>update</em>), and a <em>List</em> of functions which produce HTML 
-(possibly containing some message to send to <em>update</em>), and the output 
-will be HTML and a message to send to <em>update</em>.
+of attributes for our element, and a <em>List</em> of child nodes; the 
+function's output will be HTML text.
   
 For more information on Elm's HTML package, see
 http://package.elm-lang.org/packages/elm-lang/html/2.0.0/Html
 
 For more information on the available attributes in Elm see
 http://package.elm-lang.org/packages/elm-lang/html/2.0.0/Html-Attributes
+
+Or, see the Elm Tutorial for a good overview of HTML elements in Elm:
+https://guide.elm-lang.org/architecture/user_input/buttons.html
 
 
 2.2.5 Creating HTTP Requests with Elm
@@ -655,15 +656,351 @@ text to the returned results or to an error message.
              model.submit
            , Cmd.none)
 
+    NewWeatherData (Err msg) ->
+      (Model model.zipCode 
+             model.stationId 
+             model.startDate 
+             model.endDate 
+             ("Error " ++ toString msg)
+             model.dataSetId
+             model.submit
+           , Cmd.none)
 
-The chain of actions stops here.
+In the case of success or error, the chain of actions stops here.
 
-3.c.1 View
-3.c.2 Calls to updates are in view
-3.c.3 Results count - using JSON to decode simple nested data.
-3.c.4 Weather data
-3.c.4.1 description of GHCND weather data
-3.c.4.2 HTML tables in Elm (and standard)
+
+3.5.3 Other Messages
+
+The other messages simply change the value of a single field when appropriate.
+For example, when the zip code input value is changed, a SetZipCode message
+is generated, and so the following action is taken by <em>update</em>:
+
+    SetZipCode zipCode ->
+      (Model zipCode 
+             model.stationId 
+             model.startDate 
+             model.endDate 
+             model.weatherData 
+             model.dataSetId 
+             model.submit
+           , Cmd.none)
+
+Notice that all other values except the first (<em>zipCode</em>) are set
+to the value of the previous model state. There are similar actions for the
+other values in the model.
+
+
+3.6.1 Over "view"
+
+Details of the Elm view function and HTML functions were covered in Section 2. 
+For this application, we define the <em>view</em> function as follows:
+
+  view : Model -> Html Msg
+  view model =
+    div []
+      [ h2     []  [ text "NOAA Weather Data Query" ]
+
+      , input  [ type_ "text", placeholder "Enter Zip Code", 
+                               onInput SetZipCode ] []
+
+      , input  [ type_ "text", placeholder "Start Date (yyyy-mm-dd)" 
+                             , onInput SetStartDate ] []
+
+      , input  [ type_ "text", placeholder "End Date (yyyy-mm-dd)" 
+                             , onInput SetEndDate ] []
+
+      , button [ onClick GetWeather ] [ text "Get Weather" ]
+
+      , updateResultCount model
+      , updateWeatherData model
+      ]
+
+At the 'local root' of our HTML tree, we have a <em>div</em> which contains
+all of our other elements. Once again, these elements are just Elm functions
+which take two arguments: 1) a list of attributes and 2) a list of child nodes.
+We can guess that the <em>h2</em> function generates an HTML h2 tag and that
+its single child node '<em>text "NOAA Weather Data Query"</em>' is a function
+that simply generates text.
+
+There are text input fields for the zip code, start date, and end date; 
+their attributes specify that they are 'text' type, that they will contain
+a <em>placeholder</em> text so that the user has an idea of what to enter,
+and most importantly, they contain the name of our messages to send, once
+the input is read. These messages then generate the actions as outlined in the
+section on <em>update</em>.
+
+The functions at the bottom of <em>view</em> decode the data which exists
+in the model and because of their length, merited their own series of function
+calls.
+
+
+3.6.2 Updating the Result Count
+
+Our function which updates the result count grabs its data from the current
+model's weather data:
+
+  updateResultCount : Model -> Html Msg
+  updateResultCount model =
+    let count = 
+      decodeResultCount model.weatherData
+
+    in
+      case count of
+        Ok value ->
+          h3 [] [ text ((toString value) ++ " results for zipcode " 
+                                         ++ model.zipCode) ]
+
+        Err msg ->
+          h3 [] [ text "No Results" ]
+
+
+To get the number of results, we "simply" read the value give to us by the
+NCDC data stored in our model; this is stored in the 
+"metadata" > "resultset" > "count" field.
+There are certainly other ways to get this value, but this direct way will 
+work.
+
+*Decoding the Result Count*
+
+<em>(Note: see Section 2 for an explanation of Elm Decoders.)</em>
+
+If you'll recall, our GHCND JSON data contains two main objects: 
+
+<ol>
+  <li>"metadata"</li>
+  <li>"results"</li>
+</ol>
+
+And, an example of "metadata" could be:
+
+  "metadata": {
+    "resultset": {
+      "offset": 1,
+      "count": 8,
+      "limit": 25
+    }
+  }
+
+So, the value that we want is associated with "count". Elm provides a simple 
+way to extract this value, by using a Decoder named <em>field</em>, which will
+extract a specific value in an object if we supply the field name and a 
+decoder for that type:
+
+  field : String -> Decoder a -> Decoder a
+
+So, for example, we could get the value of "a" in "{ "a":"apple", "b":"banana" }"
+by invoking <em>field</em> like this:
+
+  > decodeString (field "a" string) """{ "a":"apple", "b":"banana" }"""
+  Ok "apple" : Result String String
+  > 
+
+
+Getting back to our GHCND data: since our value is nested within another 
+object, we must nest the call to field, like so:
+
+decodeResultCount : String -> Result String Int
+decodeResultCount json = 
+  decodeString (field "metadata" 
+                 (field "resultset" 
+                   (field "count" int))) json
+
+
+If the value is Ok, it will be displayed in our view, and if not, we see
+the error message.
+
+
+
+3.6.3 Updating the Weather Data
+
+Updating the weather data is a similar process to updating the result count,
+only more complicated since the weather data is a more challenging structure.
+
+The structure of the two functions updateResultCount and updateWeatherData
+are the same; the difference lies with the structure of the data and 
+decoders:
+
+updateWeatherData : Model -> Html Msg
+updateWeatherData model =
+  let data =
+    decodeString (field "results" 
+                   (Json.Decode.list ghcndData)) model.weatherData 
+  in
+     case data of
+       Ok listOfValues ->
+         makeGhcndTable listOfValues
+
+       Err msg ->
+         p [] [ text ("Couldn't decode weather data: " ++ msg) ]
+
+
+*Description of GHCND Data*
+
+If you'll recall, example NCDC weather data looks like this:
+
+  "results": [
+    {
+      "date": "2010-05-01T00:00:00",
+      "datatype": "PRCP",
+      "station": "GHCND:US1NCBC0005",
+      "attributes": ",,N,",
+      "value": 0
+    },
+    {
+      "date": "2010-05-01T00:00:00",
+      "datatype": "SNOW",
+      "station": "GHCND:US1NCBC0005",
+      "attributes": ",,N,",
+      "value": 0
+    },
+
+    ... (5 more records) ...
+
+    {
+      "date": "2010-05-01T00:00:00",
+      "datatype": "TOBS",
+      "station": "GHCND:USW00013872",
+      "attributes": ",,0,2400",
+      "value": 206
+    }
+  ]
+
+So, the results are the second object in our root query object, and contain
+a list of objects containing different data types (four Strings and one Int).
+There are no built in Decoders for this type of structure, so we can build
+our own using existing Decoders.
+
+
+*Decoding the Data*
+
+For <em>updateWeatherData</em> to work, we need a Decoder for our GhcndData
+type:
+
+ghcndData : Decoder GhcndData
+ghcndData =
+  map5 GhcndData
+    (at ["date"]        string)
+    (at ["datatype"]    string)
+    (at ["station"]     string)
+    (at ["attributes"]  string)
+    (at ["value"]       int)
+
+The <em>map5</em> function takes a GhcndData value along with five Decoders
+and applies each of those Decoders to the GhcndData.
+
+In this case, we have five simple Decoders of the form
+
+  (at [<field name>] type) 
+  
+Where, <em>at</em> is equivalent to the <em>field</em> function used while 
+decoding the result count; that is, it gets the value at a field with the 
+given name, and decodes it as the type given by the second argument.
+
+
+*Putting the Data in Tables*
+
+Our last task is to place the data in a neat format that is "pleasing" to
+the eye: a table!
+
+**Tables in HTML**
+
+We represent tables in HTML by declaring a nested table structure, starting
+with the table body, moving to the rows, and finally, declaring each cell: 
+
+  <table>
+    <thead>
+      <tr>
+        <th>heading 1</th>
+        <th>heading 2</th>
+        <th>heading 3</th>
+      </tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td>row 1, cell 1</td>
+        <td>row 1, cell 2</td>
+        <td>row 1, cell 3</td>
+      </tr>
+      <tr>
+        <td>row 2, cell 1</td>
+        <td>row 2, cell 2</td>
+        <td>row 2, cell 3</td>
+      </tr>
+    </tbody>
+  </table>
+
+**Tables in Elm**
+
+Tables are represented in a similar way in Elm, but in a functional way:
+
+  table [] [
+    thead [] [
+      tr [] [
+      , th [] [ text "heading 1" ]
+      , th [] [ text "heading 2" ]
+      , th [] [ text "heading 3" ]
+      ],
+    ]
+
+    tbody [] [
+      tr [] [
+      , td [] [ text "row 1, cell 1" ]
+      , td [] [ text "row 1, cell 2" ]
+      , td [] [ text "row 1, cell 3" ]
+      ],
+
+      tr [] [
+      , td [] [ text "row 2, cell 1" ]
+      , td [] [ text "row 2, cell 2" ]
+      , td [] [ text "row 2, cell 3" ]
+      ]
+    ]
+  ]
+
+We would like the first row to be a header which lists the contents of each
+column, followed by the weather data below. We can abstract these details
+into two functions: 
+
+makeGhcndTableHeader : Html Msg
+makeGhcndTableBody   : List GhcndData -> Html Msg
+
+Now we can define a high-level function which will build the complete
+table:
+
+  makeGhcndTable : List GhcndData -> Html Msg
+  makeGhcndTable listOfValues =
+    table [] [ makeGhcndTableHeader, makeGhcndTableBody listOfValues ]
+
+Creating the header generation function is trivial:
+
+  makeGhcndTableHeader : Html Msg
+  makeGhcndTableHeader = 
+    tr [] [
+       td [] [ text "Date" ]
+     , td [] [ text "Data Type" ]
+     , td [] [ text "Station" ]
+     , td [] [ text "Attributes" ]
+     , td [] [ text "Value" ]
+    ]
+
+But now we must figure out how to dynamically generate the rows of weather
+data. Firstly, we can create a function which accepts a single instance of
+GhcndData and converts it into a table row:
+
+  makeGhcndTableRow : GhcndData -> Html Msg
+  makeGhcndTableRow data = 
+    tr [] [ 
+       td [] [ text (toString data.date) ]
+     , td [] [ text (toString data.datatype) ]
+     , td [] [ text (toString data.station) ]
+     , td [] [ text (toString data.attributes) ]
+     , td [] [ text (toString data.value) ]
+    ] 
+
+and now, we can map each item in our List of GhcndData into this row creation
+function and then 'pipe' that to an Elm <em>tbody</em> node.
+
+
 
 <END OF REPORT>
 

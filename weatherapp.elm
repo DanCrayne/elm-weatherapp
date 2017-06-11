@@ -37,6 +37,16 @@ type alias GhcndData =
   }
 
 
+ghcndData : Decoder GhcndData
+ghcndData =
+  map5 GhcndData
+    (at ["date"]        string)
+    (at ["datatype"]    string)
+    (at ["station"]     string)
+    (at ["attributes"]  string)
+    (at ["value"]       int)
+
+
 init : (Model, Cmd Msg)
 init =
   (Model "" 
@@ -74,6 +84,26 @@ update msg model =
              model.dataSetId
              True
            , getWeather model)
+
+    NewWeatherData (Ok newWeatherData) ->
+      (Model model.zipCode 
+             model.stationId 
+             model.startDate 
+             model.endDate 
+             newWeatherData 
+             model.dataSetId
+             model.submit
+           , Cmd.none)
+           
+    NewWeatherData (Err msg) ->
+      (Model model.zipCode 
+             model.stationId 
+             model.startDate 
+             model.endDate 
+             ("Error " ++ toString msg)
+             model.dataSetId
+             model.submit
+           , Cmd.none)
 
     SetZipCode zipCode ->
       (Model zipCode 
@@ -125,27 +155,7 @@ update msg model =
              model.submit
            , Cmd.none)
 
-    NewWeatherData (Ok newWeatherData) ->
-      (Model model.zipCode 
-             model.stationId 
-             model.startDate 
-             model.endDate 
-             newWeatherData 
-             model.dataSetId
-             model.submit
-           , Cmd.none)
-           
-    NewWeatherData (Err msg) ->
-      (Model model.zipCode 
-             model.stationId 
-             model.startDate 
-             model.endDate 
-             ("Error " ++ toString msg)
-             model.dataSetId
-             model.submit
-           , Cmd.none)
-
-
+ 
 
 -- VIEW
 
@@ -158,10 +168,10 @@ view model =
     , input  [ type_ "text", placeholder "Enter Zip Code", 
                              onInput SetZipCode ] []
 
-    , input  [ type_ "text", placeholder "Start Date" 
+    , input  [ type_ "text", placeholder "Start Date (yyyy-mm-dd)" 
                            , onInput SetStartDate ] []
 
-    , input  [ type_ "text", placeholder "End Date" 
+    , input  [ type_ "text", placeholder "End Date (yyyy-mm-dd)" 
                            , onInput SetEndDate ] []
 
     , button [ onClick GetWeather ] [ text "Get Weather" ]
@@ -175,6 +185,7 @@ updateResultCount : Model -> Html Msg
 updateResultCount model =
   let count = 
     decodeResultCount model.weatherData
+
   in
     case count of
       Ok value ->
@@ -238,16 +249,6 @@ makeGhcndTableHeader =
    , td [] [ text "Attributes" ]
    , td [] [ text "Value" ]
   ]
-
-
-ghcndData : Decoder GhcndData
-ghcndData =
-  map5 GhcndData
-    (at ["date"]        string)
-    (at ["datatype"]    string)
-    (at ["station"]     string)
-    (at ["attributes"]  string)
-    (at ["value"]       int)
 
 
 
