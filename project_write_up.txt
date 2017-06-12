@@ -1,0 +1,1021 @@
+========
+Abstract
+========
+
+This project uses a web application language and framework called Elm
+(http://www.elm-lang.org) to make a simple program which queries
+a web API for JSON data based on front-end input, and then parses it, and 
+finally returns a simple HTML table of the results.
+
+This example is very simple, and should serve as a basic introduction to
+the Elm language and framework. Much of the information presented was based
+on online examples either directly or indirectly (especially the Elm tutorial
+https://guide.elm-lang.org/); most of the original work can be found in the
+sections including and following Section 4; links to sources will be provided 
+as appropriate, and hopefully I have given credit where it's due!
+
+Please note that this document assumes no prior knowledge of any of the
+technologies listed; so if you already know what JSON, etc. are then please
+feel free to skip those sections!
+
+
+
+==================
+1 - Implementation
+==================
+
+We will use technologies that are as vanilla as possible so that the 
+implementation details do not distract from our goal of creating a simple
+webapp.
+
+
+1.1 Elm
+-------
+
+Elm is a pure, statically typed functional language, which is compiled into
+JavaScript, and runs on top of the Elm runtime environment. The Elm framework
+is specifically intended to make webapps.
+
+The application was created with the following Elm packages:
+  elm-lang/core
+  elm-lang/html
+  elm-lang/http
+
+
+1.2 JSON
+--------
+
+This program relies on JSON data sent from the NCDC web service. JSON is a
+popular data format for web services, as described by json.org <LINK>:
+
+  "JSON (JavaScript Object Notation) is a lightweight data-interchange format.
+  It is easy for humans to read and write. It is easy for machines to parse 
+  and generate."
+
+The JSON formal grammar is very compact and simple and can be viewed at 
+json.org. For convenience, I will include the top-level productions here:
+
+  object
+    {}
+    { members }
+
+  members
+    pair
+    pair , members
+
+  pair
+    string : value
+
+  array
+    []
+    [ elements ]
+
+  elements
+    value 
+    value , elements
+
+  value
+    string
+    number
+    object
+    array
+    true
+    false
+    null
+
+Elm includes support for decoding JSON data into Elm data types. Decoders are
+provided for several types, including primitives (Int, String, etc); custom
+decoders can also be constructed by layering existing decoders - this is what
+we'll do later.
+
+
+1.3 Weather forecast API
+------------------------
+
+We will query a free API provided by the National Oceanic and Atmospheric 
+Administration (NOAA). The specific API is National Climatic Data Center (NCDC)
+Climate Data Online (CDO) v2 web service. The API provides weather data of
+many different types ('datasets' in NCDC's parlance), however the focus of
+this tutorial will be data from the GHCND dataset, which is a daily summary
+of certain climate data, such as temperatures and precipitation.
+
+A description of our API can be found here: 
+  https://www.ncdc.noaa.gov/cdo-web/webservices/v2
+
+A very basic query (very similar to what we'll be using) has been provided by
+NCDC as follows (https://www.ncdc.noaa.gov/cdo-web/webservices/v2#data):
+
+  https://www.ncdc.noaa.gov/cdo-web/api/v2/data?datasetid=GHCND&locationid=ZIP:28801&startdate=2010-05-01&enddate=2010-05-01
+  
+This query specifies that we would like all available GHCND data for zip code
+28801 during May 1st, 2010. Of course, these values can be replaced with others
+in order to query other locations and dates (which is what we'll do later).
+
+The query returns a JSON string containing our values.
+
+Executing our above NCDC provided query, would result in the following:
+{
+  "metadata": { 
+    "resultset": { 
+      "offset": 1, 
+      "count": 8, 
+      "limit": 25 
+    } 
+  },
+
+  "results": [
+    {
+      "date": "2010-05-01T00:00:00",
+      "datatype": "PRCP",
+      "station": "GHCND:US1NCBC0005",
+      "attributes": ",,N,",
+      "value": 0
+    },
+    {
+      "date": "2010-05-01T00:00:00",
+      "datatype": "SNOW",
+      "station": "GHCND:US1NCBC0005",
+      "attributes": ",,N,",
+      "value": 0
+    },
+
+    ... (5 more objects) ...
+
+    {
+      "date": "2010-05-01T00:00:00",
+      "datatype": "TOBS",
+      "station": "GHCND:USW00013872",
+      "attributes": ",,0,2400",
+      "value": 206
+    }
+  ]
+}
+
+According to the JSON grammar, we have a somewhat complicated nested structure
+which is an object containing two objects, "metadata" and "results". The
+"metadata" object contains another object called "resultset" which contains
+three "string : value" pairs (offset, count, and limit). Next, the "results"
+object contains an array of objects, each object element contains five 
+"string : value" pairs (date, datatype, station, attributes, and value). Our
+job below will be to decode this JSON into corresponding Elm types.
+
+
+
+===================
+2 - Overview of Elm
+===================
+
+As mentioned previously, Elm (elm-lang.org) is a statically typed pure 
+functional language, with syntax and features similar to Haskell. One 
+notable difference between Elm and Haskell is that Elm does not support
+higher-order functions (such as map), so as you will see, we must specify
+the type when using such functions (List.map, etc) 
+(see https://github.com/elm-lang/elm-compiler/issues/396).
+
+Since Elm is a domain-specific language for webapps, we also are given an 
+Elm-to-JavaScript compiler and a runtime system. 
+
+Elm can be easily installed using npm <LINK>; instructions can be found here: 
+https://guide.elm-lang.org/install.html
+
+Once Elm is installed, you may use the `elm-package` facility to install
+Elm-specific packages as needed (although, for this tutorial no external
+packages were used).
+
+
+2.1 Architecture of Elm
+-----------------------
+
+Elm programs conform to a design pattern which separates the way that the
+application state is stored, how it is displayed, and how it is manipulated.
+These concepts are realized through a type which contains the state 
+("Model"), a function ("view") which transforms that state into a 
+renderable format, and another function ("update") which takes our 
+existing state and makes changes to it.
+
+
+- Model -
+
+A type named "Model" represents the application's state. For example: the
+current values of this page's text inputs, or whether the user clicked a 
+certain button. It is just an alias (or synonym) of the Record type, and 
+should reflect the structure of the webapp.  When we want the state of our 
+webapp to change, a new Model is defined and given to the two functions which 
+handle viewing and updating the app.
+
+
+- View -
+
+The application state is displayed according to the definition of the 'view'
+function, which has the following type:
+
+  view : Model -> Html Msg
+  
+so, we can see this function as taking the state of some Model, and 
+producing a function which generates HTML code, given some Msg type. The
+Msg type is a "message" which will be received by the update function.
+
+
+- Update -
+
+Finally, the 'update' function takes our Msg value, from the view function,
+and performs some action. In our case, the update function has the following
+type:
+
+  update : Msg -> Model -> (Model, Cmd Msg)
+
+where, we can see this function as taking a Msg value which indicates some
+action to perform on some (the current) Model. The output is a pair containing
+the transformed Model, and some Cmd (command) to run next.
+
+
+- Init -
+
+The init function contains the initial values for our model.
+
+
+- Main -
+
+Each Elm app has a main value which contains the Model, view, and update
+components. For our purposes, main is defined as a program, 
+with the following signature:
+
+program : 
+  { init : ( model, Cmd msg )
+  , subscriptions : model -> Sub msg
+  , update : msg -> model -> ( model, Cmd msg )
+  , view : model -> Html msg
+  }
+  -> Platform.Program Basics.Never model msg
+
+init contains our initial model values along with some command
+to execute (we will use a command to execute an HTTP request later).
+(More information on commands can be found here:
+http://package.elm-lang.org/packages/elm-lang/core/5.1.1/Platform-Cmd)
+
+We can just feed our defined values directly into this structure as follows:
+  main =
+    Html.program
+      { init = init 
+      , view = view
+      , update = update
+      , subscriptions = subscriptions
+      }
+
+(Other program types are available, but this one fits our purpose best...
+see http://package.elm-lang.org/packages/elm-lang/html/2.0.0/Html)
+
+
+2.2 Overview of HTML Used
+-------------------------
+
+- HTML Output -
+
+We will use the elm-lang/html package to output HTML. This package contains
+functions which generate specific HTML elements, such as form inputs, 
+paragraphs, line breaks, etc. 
+
+As this document does not assume prior knowledge of HTML, we will cover
+the basics needed to understand the source code for this project.  In this 
+project, we use a very limited set subset of HTML to define special formatting
+for text, user input elements, and basic layout within our HTML document.
+
+HTML elements are created using HTML tags, such as:
+
+  <p>This is a paragraph</p>
+
+  or
+
+  <b>This is bolded text</b>
+
+  (see: https://en.wikipedia.org/wiki/HTML_element)
+
+Where, the first tag is known as the "start tag" and the second tag (which
+contains the forward slash) is known as an "end tag".
+
+Start tags can optionally contain attributes which we will use to specify
+default values and allow us to specify an action to perform when the user
+changes an input element's contents 
+  (see: https://en.wikipedia.org/wiki/HTML_attribute)
+
+For example:
+
+  <input type="text" oninput="Function()">
+
+  (Note: an input element has no end tag.)
+
+We can fairly easily see that the attribute is used to specify that the
+user input element accepts text (we will use this input type to allow the 
+user to specify a zip code and date range. We use the oninput
+attribute to specify the action to take when the user changes the text
+within the input element.
+
+Each pair of start and end tags defines a node within a tree of 
+nodes, called the Document Object Model (DOM).
+
+For our purposes, we will use a container element called a div, which 
+groups elements together into a visual block; while not the root of the DOM, 
+this node will be the root for our small application. This div will 
+contain our user input elements, displayed text, and a button.
+
+  See the following resources if you yearn for more HTML knowledge:
+    https://developer.mozilla.org/en-US/docs/Web/HTML
+    https://www.w3schools.com/html/
+
+
+
+====================
+3 - Elm Modules Used
+====================
+
+
+3.1 Producing HTML with Elm
+---------------------------
+
+We will produce an HTML tree in Elm using functions in the html 
+package. The type of these functions is as follows:
+
+  node
+    :  String
+      -> List (Attribute msg)
+      -> List (Html msg)
+      -> Html msg
+
+So, we take the name of the element as a String, along with a List 
+of attributes for our element, and a List of child nodes; the 
+function's output will be HTML text.
+  
+For more information on Elm's HTML package, see
+  http://package.elm-lang.org/packages/elm-lang/html/2.0.0/Html
+
+For more information on the available attributes in Elm see
+  http://package.elm-lang.org/packages/elm-lang/html/2.0.0/Html-Attributes
+
+Or, see the Elm Tutorial for a good overview of HTML elements in Elm:
+  https://guide.elm-lang.org/architecture/user_input/buttons.html
+
+
+3.2 Creating HTTP Requests with Elm
+-----------------------------------
+
+Elm comes with the facilities to allow us to create and send a Hypertext
+Transfer Protocol (HTTP) request. We will receive the response as JSON data
+represented encapsulated within an Elm String.
+
+The request type is 'GET', which sends a request for data from a specified
+resource (1). The request contains various information encapsulated in a header;
+we will also include a "token" in the header fields which we need to obtain 
+from NCDC before we can access their API. 
+
+  See the following resources for more information:
+    1. https://www.w3schools.com/tags/ref_httpmethods.asp
+    2. https://en.wikipedia.org/wiki/Hypertext_Transfer_Protocol#Request_methods
+    3. https://en.wikipedia.org/wiki/List_of_HTTP_header_fields
+    4. https://www.ncdc.noaa.gov/cdo-web/token
+
+The Elm tutorial contains a useful section on creating HTTP requests:
+  https://guide.elm-lang.org/architecture/effects/http.html
+
+Documentation for Elm http package: 
+  http://package.elm-lang.org/packages/evancz/elm-http/3.0.1/Http
+
+
+3.3 Using Elm to Decode JSON
+----------------------------
+
+Elm allows us to decode JSON data into Elm types. It possesses many built
+in decoders for primitive types, and facilities to generate more complicated
+custom decoders by inlining those decoders.
+
+The decoder for Ints (provided by the Jason.Decode package) has the following 
+signature:
+
+  int : Decoder Int
+
+We will use these decoders in conjunction with the decodeString 
+function which has the following signature:
+
+  decodeString : Decoder a -> String -> Result String a
+
+This function takes a Decoder and a String which should contain the type
+of value expected, and will return that String converted into the type 
+a, along with result information (Ok or Err and a String describing
+the result).
+
+So, to decode the string "84" into an Elm value, we would do the following:
+
+  > decodeString int "84"
+  Ok 84 : Result String Int
+  > 
+
+We can decode more complex types, such as lists of integers, by joining
+multiple decoders. For example, if we had a String representing a List of
+Ints "[1,2,3]", then we would use the list Decoder
+  
+  Decoder a -> Decoder (List a)
+
+in conjunction with our int Decoder, as follows:
+
+  > decodeString (list (int)) "[1,2,3]"
+  Ok [1,2,3] : Result String (List Int)
+  > 
+
+This concept can be extended to more complicated structures, such as our
+GHCND data structure, as we'll see later.
+
+A list of Elm JSON decoders and decoding information can be found here:
+  http://package.elm-lang.org/packages/elm-lang/core/5.1.1/Json-Decode
+
+Also, the Elm Tutorial contains an very helpful piece on decoding JSON:
+  https://guide.elm-lang.org/interop/json.html
+
+
+
+====================
+4 - Webapp Structure
+====================
+
+
+As described in Section 2, our webapp follows Elm's Model/view/update
+paradigm. The following section describes how our webapp fits into that
+pattern.
+
+
+4.1 Model
+---------
+
+In our webapp, we have the following model:
+
+  type alias Model =
+    { zipCode     : String
+    , stationId   : String
+    , startDate   : String
+    , endDate     : String
+    , weatherData : String
+    , dataSetId   : String
+    , submit      : Bool
+    }
+
+Which includes the items in the webapp which we would like to track. We will
+use the zipCode value for the zip code of the area of interest; startDate and 
+endDate will provide the date range for our weather data; weatherData will 
+represent the current state of the raw (JSON encoded) weather data string.
+We provide a place to track the NCDC data set ID, although for this webapp,
+we are only using GHCND, but this was included with the future plan of 
+extending the app to include other weather data. Finally, we have a Bool
+value which tracks whether we are ready to send (submit) the query and
+change the state of the webapp.
+
+
+4.2 Reasons for this Model Structure
+------------------------------------
+
+This application's model structure was chosen for the sake of simplicity
+of implementation. Before expanding this program, I would want to generalize
+the model more. For example, in this webapp, we only query for GHCND data,
+and so having the zipCode, stationId, etc. exposed on the top-level of the
+model makes sense. But, to extend the webapp to include other CDO datasets,
+we would likely want to encapsulate these parameters in a record so that the
+code remains clean.
+
+
+4.3 GhcndData Type
+------------------
+
+To store the specific components of GHCND data as received from the web
+service, we have a record called GhcndData:
+
+  type alias GhcndData = 
+    { date        : String
+    , datatype    : String
+    , station     : String
+    , attributes  : String
+    , value       : Int
+    }
+
+JSON can then be decoded into such a structure as we shall see.
+
+
+4.4 Initial Model
+-----------------
+
+Our model is given the following initial values:
+
+  init : (Model, Cmd Msg)
+  init =
+    (Model "" 
+           "" 
+           ""
+           ""
+           "" 
+           "GHCND" 
+           False, Cmd.none)
+
+Initially we would like the model to contain no zip code, station ID, or
+weather data, as these values will be established once the user specifies
+the zip code and date range. The initial value for the data set is "GHCND", 
+and this value should not change when the webapp's state changes; it will
+just continue to be passed as-is (this would change if we extend the program
+to include other datasets). We set submit to false, and
+await the user clicking the button before changing this to True.
+Finally, we do not need to execute a command when the webapp is just starting,
+and so we pass Cmd.none to indicate this.
+
+
+
+======================
+5 - Updating the Model
+======================
+
+The Msg type is defined with our application specific messages,
+which will be sent to the update function when the app state 
+needs to change. The following messages reflect the ways in which the
+webapp's state will change:
+
+  type Msg
+    = GetWeather
+    | NewWeatherData (Result Http.Error String)
+    | SetZipCode    String
+    | SetStationId  String
+    | SetStartDate  String
+    | SetEndDate    String
+    | SetDataSetId  String
+
+update contains a case expression which will generate
+a Model state based on the received message:
+
+  update : Msg -> Model -> (Model, Cmd Msg)
+  update msg model =
+    case msg of
+      GetWeather ->
+      ...
+      NewWeatherData (Ok newWeatherData) ->
+      ...
+
+Most of the generated models take no further action, GetWeather
+being the exception.
+
+
+5.1 Getting the Weather
+-----------------------
+
+The GetWeather message starts a chain of commands (Cmds)
+which ultimately either gets the desired weather data from NOAA's database,
+or fails; in either event the view will notify us of the result.
+
+When update receives this message, it produces the following model:
+
+  GetWeather ->
+    (Model model.zipCode
+           model.stationId
+           model.startDate
+           model.endDate
+           model.weatherData
+           model.dataSetId
+           True
+         , getWeather model)
+
+which makes only one change to the model - to set the submit value
+to True - which in effect releases the lock against updating the weather
+data in the getWeather function.
+
+Along with setting the new state, update also executes the command specified
+by the second item in the pair, getWeather, which is the function
+that actually queries the API:
+
+  getWeather : Model -> Cmd Msg
+  getWeather model = 
+    if model.submit == True then
+      let weatherRequest = 
+        { method  = "GET"
+        , headers = [Http.header "token" "<some token value>"]
+        , url     = "https://www.ncdc.noaa.gov/cdo-web/api/v2/data?"
+                  ++"datasetid="      ++ model.dataSetId ++ "&"
+                  ++"locationid=ZIP:" ++ model.zipCode   ++ "&"
+                  ++"startdate="      ++ model.startDate ++ "&"
+                  ++"enddate="        ++ model.endDate
+        , body            = Http.emptyBody
+        , expect          = Http.expectString
+        , timeout         = Nothing
+        , withCredentials = False
+        }
+      in
+        Http.send NewWeatherData (Http.request weatherRequest)
+    else
+      Cmd.none
+
+HTTP requests were discussed in Section 2. This request is very simple, and
+we could have used the simple built-in Elm function 
+http.get Decoder url if we did not need to provide a token.
+Note that the request is only generated and sent if the model's submit
+value is True else we do nothing. 
+
+Just as the calling function, this function generates another command,
+which sends our HTTP request - built by the Http.request function - and
+generates a message which includes the result of the query. When
+update receives the message, it will either set our weather data 
+text to the returned results or to an error message.
+
+   NewWeatherData (Ok newWeatherData) ->
+      (Model model.zipCode 
+             model.stationId 
+             model.startDate 
+             model.endDate 
+             newWeatherData 
+             model.dataSetId
+             model.submit
+           , Cmd.none)
+
+    NewWeatherData (Err msg) ->
+      (Model model.zipCode 
+             model.stationId 
+             model.startDate 
+             model.endDate 
+             ("Error " ++ toString msg)
+             model.dataSetId
+             model.submit
+           , Cmd.none)
+
+In the case of success or error, the chain of actions stops here.
+
+
+5.2 Other Messages
+------------------
+
+The other messages simply change the value of a single field when appropriate.
+For example, when the zip code input value is changed, a SetZipCode message
+is generated, and so the following action is taken by update:
+
+    SetZipCode zipCode ->
+      (Model zipCode 
+             model.stationId 
+             model.startDate 
+             model.endDate 
+             model.weatherData 
+             model.dataSetId 
+             model.submit
+           , Cmd.none)
+
+Notice that all other values except the first (zipCode) are set
+to the value of the previous model state. There are similar actions for the
+other values in the model.
+
+
+
+==============================
+6 - Displaying the Model State
+==============================
+
+Details of the Elm view function and HTML functions were covered in Section 2. 
+For this application, we define the view function as follows:
+
+  view : Model -> Html Msg
+  view model =
+    div []
+      [ h2     []  [ text "NOAA Weather Data Query" ]
+
+      , input  [ type_ "text", placeholder "Enter Zip Code", 
+                               onInput SetZipCode ] []
+
+      , input  [ type_ "text", placeholder "Start Date (yyyy-mm-dd)" 
+                             , onInput SetStartDate ] []
+
+      , input  [ type_ "text", placeholder "End Date (yyyy-mm-dd)" 
+                             , onInput SetEndDate ] []
+
+      , button [ onClick GetWeather ] [ text "Get Weather" ]
+
+      , updateResultCount model
+      , updateWeatherData model
+      ]
+
+At the 'local root' of our HTML tree, we have a div which contains
+all of our other elements. Once again, these elements are just Elm functions
+which take two arguments: 1) a list of attributes and 2) a list of child nodes.
+We can guess that the h2 function generates an HTML h2 tag and that
+its single child node 'text "NOAA Weather Data Query"' is a function
+that simply generates text.
+
+There are text input fields for the zip code, start date, and end date; 
+their attributes specify that they are 'text' type, that they will contain
+a placeholder text so that the user has an idea of what to enter,
+and most importantly, they contain the name of our messages to send, once
+the input is read. These messages then generate the actions as outlined in the
+section on update.
+
+The functions at the bottom of view decode the data which exists
+in the model and because of their length, merited their own series of function
+calls.
+
+
+6.1 Displaying the Result Count
+-------------------------------
+
+Our function which updates the result count grabs its data from the current
+model's weather data:
+
+  updateResultCount : Model -> Html Msg
+  updateResultCount model =
+    let count = 
+      decodeResultCount model.weatherData
+
+    in
+      case count of
+        Ok value ->
+          h3 [] [ text ((toString value) ++ " results for zipcode " 
+                                         ++ model.zipCode) ]
+
+        Err msg ->
+          h3 [] [ text "No Results" ]
+
+
+To get the number of results, we "simply" read the value give to us by the
+NCDC data stored in our model; this is stored in the 
+"metadata" > "resultset" > "count" field.
+There are certainly other ways to get this value, but this direct way will 
+work.
+
+
+- Decoding the Result Count -
+
+(Note: see Section 2 for an explanation of Elm Decoders.)
+
+If you'll recall, our GHCND JSON data contains two main objects: 
+
+<ol>
+  <li>"metadata"</li>
+  <li>"results"</li>
+</ol>
+
+And, an example of "metadata" could be:
+
+  "metadata": {
+    "resultset": {
+      "offset": 1,
+      "count": 8,
+      "limit": 25
+    }
+  }
+
+So, the value that we want is associated with "count". Elm provides a simple 
+way to extract this value, by using a Decoder named field, which will
+extract a specific value in an object if we supply the field name and a 
+decoder for that type:
+
+  field : String -> Decoder a -> Decoder a
+
+So, for example, we could get the value of "a" in 
+  { "a":"apple", "b":"banana" }
+
+by invoking field like this:
+
+  > decodeString (field "a" string) """{ "a":"apple", "b":"banana" }"""
+  Ok "apple" : Result String String
+  > 
+
+
+Getting back to our GHCND data: since our value is nested within another 
+object, we must nest the call to field, like so:
+
+decodeResultCount : String -> Result String Int
+decodeResultCount json = 
+  decodeString (field "metadata" 
+                 (field "resultset" 
+                   (field "count" int))) json
+
+
+If the value is Ok, it will be displayed in our view, and if not, we see
+the error message.
+
+
+6.2 Displaying the Weather Data
+-------------------------------
+
+Updating the weather data is a similar process to updating the result count,
+only more complicated since the weather data is a more challenging structure.
+
+The structure of the two functions updateResultCount and updateWeatherData
+are the same; the difference lies with the structure of the data and 
+decoders:
+
+updateWeatherData : Model -> Html Msg
+updateWeatherData model =
+  let data =
+    decodeString (field "results" 
+                   (Json.Decode.list ghcndData)) model.weatherData 
+  in
+     case data of
+       Ok listOfValues ->
+         makeGhcndTable listOfValues
+
+       Err msg ->
+         p [] [ text ("Couldn't decode weather data: " ++ msg) ]
+
+
+- Description of GHCND Data -
+
+If you'll recall, example NCDC weather data looks like this:
+
+  "results": [
+    {
+      "date": "2010-05-01T00:00:00",
+      "datatype": "PRCP",
+      "station": "GHCND:US1NCBC0005",
+      "attributes": ",,N,",
+      "value": 0
+    },
+    {
+      "date": "2010-05-01T00:00:00",
+      "datatype": "SNOW",
+      "station": "GHCND:US1NCBC0005",
+      "attributes": ",,N,",
+      "value": 0
+    },
+
+    ... (5 more records) ...
+
+    {
+      "date": "2010-05-01T00:00:00",
+      "datatype": "TOBS",
+      "station": "GHCND:USW00013872",
+      "attributes": ",,0,2400",
+      "value": 206
+    }
+  ]
+
+So, the results are the second object in our root query object, and contain
+a list of objects containing different data types (four Strings and one Int).
+There are no built in Decoders for this type of structure, so we can build
+our own using existing Decoders.
+
+
+- Decoding the Data -
+
+For updateWeatherData to work, we need a Decoder for our GhcndData type:
+
+ghcndData : Decoder GhcndData
+ghcndData =
+  map5 GhcndData
+    (at ["date"]        string)
+    (at ["datatype"]    string)
+    (at ["station"]     string)
+    (at ["attributes"]  string)
+    (at ["value"]       int)
+
+The map5 function takes a GhcndData value along with five Decoders
+and applies each of those Decoders to the GhcndData.
+
+In this case, we have five simple Decoders of the form
+
+  (at [<field name>] type) 
+  
+Where, at is equivalent to the field function used while 
+decoding the result count; that is, it gets the value at a field with the 
+given name, and decodes it as the type given by the second argument.
+
+
+- Putting the Data in Tables -
+
+Our last task is to place the data in a neat format that is "pleasing" to
+the eye: a table!
+
+
+- Tables in HTML -
+
+We represent tables in HTML by declaring a nested table structure, starting
+with the table body, moving to the rows, and finally, declaring each cell: 
+
+  <table>
+    <thead>
+      <tr>
+        <th>heading 1</th>
+        <th>heading 2</th>
+        <th>heading 3</th>
+      </tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td>row 1, cell 1</td>
+        <td>row 1, cell 2</td>
+        <td>row 1, cell 3</td>
+      </tr>
+      <tr>
+        <td>row 2, cell 1</td>
+        <td>row 2, cell 2</td>
+        <td>row 2, cell 3</td>
+      </tr>
+    </tbody>
+  </table>
+
+- Tables in Elm -
+
+Tables are represented in a similar way in Elm, but in a functional way:
+
+  table [] [
+    thead [] [
+      tr [] [
+      , th [] [ text "heading 1" ]
+      , th [] [ text "heading 2" ]
+      , th [] [ text "heading 3" ]
+      ],
+    ]
+
+    tbody [] [
+      tr [] [
+      , td [] [ text "row 1, cell 1" ]
+      , td [] [ text "row 1, cell 2" ]
+      , td [] [ text "row 1, cell 3" ]
+      ],
+
+      tr [] [
+      , td [] [ text "row 2, cell 1" ]
+      , td [] [ text "row 2, cell 2" ]
+      , td [] [ text "row 2, cell 3" ]
+      ]
+    ]
+  ]
+
+We would like the first row to be a header which lists the contents of each
+column, followed by the weather data below. We can abstract these details
+into two functions: 
+
+makeGhcndTableHeader : Html Msg
+makeGhcndTableBody   : List GhcndData -> Html Msg
+
+Now we can define a high-level function which will build the complete
+table:
+
+  makeGhcndTable : List GhcndData -> Html Msg
+  makeGhcndTable listOfValues =
+    table [] [ makeGhcndTableHeader, makeGhcndTableBody listOfValues ]
+
+Creating the header generation function is trivial:
+
+  makeGhcndTableHeader : Html Msg
+  makeGhcndTableHeader = 
+    tr [] [
+       td [] [ text "Date" ]
+     , td [] [ text "Data Type" ]
+     , td [] [ text "Station" ]
+     , td [] [ text "Attributes" ]
+     , td [] [ text "Value" ]
+    ]
+
+But now we must figure out how to dynamically generate the rows of weather
+data. Firstly, we can create a function which accepts a single instance of
+GhcndData and converts it into a table row:
+
+  makeGhcndTableRow : GhcndData -> Html Msg
+  makeGhcndTableRow data = 
+    tr [] [ 
+       td [] [ text (toString data.date) ]
+     , td [] [ text (toString data.datatype) ]
+     , td [] [ text (toString data.station) ]
+     , td [] [ text (toString data.attributes) ]
+     , td [] [ text (toString data.value) ]
+    ] 
+
+and now, we can map each item in our List of GhcndData into this row creation
+function and then 'pipe' that to an Elm tbody node:
+
+makeGhcndTableBody : List GhcndData -> Html Msg
+makeGhcndTableBody listOfValues = 
+  listOfValues
+    |> List.map (\item -> (makeGhcndTableRow item))
+    |> tbody []
+  
+
+
+================
+7 Final Thoughts
+================
+
+The next steps for this app will be to refactor it so that the model is more
+generalized, so that we can add other datasets from the NCDC API easily.
+This will allow us to pull in other interesting data, and to extend the app
+to support selecting location by city, state, etc. Right now, the data 
+available by zip code in the GHCND dataset is fairly inconsistent. You may 
+find that when you enter a certain zip code inside of a city, that no data 
+will be returned. This could be addressed by using other datasets, which
+provide a listing of locations where the data is available.
+
+Another interesting modification would be to move the datasets into a List
+instead of a single value; this way, weather in different times and/or places
+could be compared.
+
+Working with Elm for a first project was highly frustrating at times, although
+now that it is done, I feel that extending the project would be simple, after
+struggling through a simple initial project. A source of difficulty, I found,
+was the lack of documentation. In most instances, when I was looking for 
+specific advice, I was pointed back to the tutorial, which contains more 
+general advise that tends to be trivial. Also, at times, a search for 
+documentation would yield older document revisions, which are no longer 
+relevant, as the system seems to be in a state of flux (but, I should stop 
+complaining and start contributing :). Particularly, creating the decoder for 
+the list of objects was difficult, as most examples that I found were somewhat 
+trivial.
+
+However, with enough sleuthing, correct examples and advice can be found, and
+Elm is fairly intuitive, so coming up with a solution becomes a short process
+once you've worked through several examples; the authors of the tutorial really
+tried to communicate the importance working through examples!
