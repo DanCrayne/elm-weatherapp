@@ -1,6 +1,7 @@
-========
+================================================================================
 Abstract
-========
+================================================================================
+
 
 This project uses a web application language and framework called Elm
 (http://www.elm-lang.org) to make a simple program which queries
@@ -20,15 +21,17 @@ feel free to skip those sections!
 
 
 
-==================
+================================================================================
 1 - Implementation
-==================
+================================================================================
+
 
 We will use technologies that are as vanilla as possible so that the 
 implementation details do not distract from our goal of creating a simple
 webapp.
 
 
+-------
 1.1 Elm
 -------
 
@@ -42,6 +45,7 @@ The application was created with the following Elm packages:
   elm-lang/http
 
 
+--------
 1.2 JSON
 --------
 
@@ -89,6 +93,7 @@ decoders can also be constructed by layering existing decoders - this is what
 we'll do later.
 
 
+------------------------
 1.3 Weather forecast API
 ------------------------
 
@@ -161,9 +166,10 @@ job below will be to decode this JSON into corresponding Elm types.
 
 
 
-===================
+================================================================================
 2 - Overview of Elm
-===================
+================================================================================
+
 
 As mentioned previously, Elm (elm-lang.org) is a statically typed pure 
 functional language, with syntax and features similar to Haskell. One 
@@ -183,6 +189,7 @@ Elm-specific packages as needed (although, for this tutorial no external
 packages were used).
 
 
+-----------------------
 2.1 Architecture of Elm
 -----------------------
 
@@ -266,6 +273,7 @@ We can just feed our defined values directly into this structure as follows:
 see http://package.elm-lang.org/packages/elm-lang/html/2.0.0/Html)
 
 
+-------------------------
 2.2 Overview of HTML Used
 -------------------------
 
@@ -324,11 +332,12 @@ contain our user input elements, displayed text, and a button.
 
 
 
-====================
+================================================================================
 3 - Elm Modules Used
-====================
+================================================================================
 
 
+---------------------------
 3.1 Producing HTML with Elm
 ---------------------------
 
@@ -355,6 +364,7 @@ Or, see the Elm Tutorial for a good overview of HTML elements in Elm:
   https://guide.elm-lang.org/architecture/user_input/buttons.html
 
 
+-----------------------------------
 3.2 Creating HTTP Requests with Elm
 -----------------------------------
 
@@ -380,6 +390,7 @@ Documentation for Elm http package:
   http://package.elm-lang.org/packages/evancz/elm-http/3.0.1/Http
 
 
+----------------------------
 3.3 Using Elm to Decode JSON
 ----------------------------
 
@@ -431,9 +442,9 @@ Also, the Elm Tutorial contains an very helpful piece on decoding JSON:
 
 
 
-====================
+================================================================================
 4 - Webapp Structure
-====================
+================================================================================
 
 
 As described in Section 2, our webapp follows Elm's Model/view/update
@@ -441,6 +452,7 @@ paradigm. The following section describes how our webapp fits into that
 pattern.
 
 
+---------
 4.1 Model
 ---------
 
@@ -467,6 +479,7 @@ value which tracks whether we are ready to send (submit) the query and
 change the state of the webapp.
 
 
+------------------------------------
 4.2 Reasons for this Model Structure
 ------------------------------------
 
@@ -479,6 +492,7 @@ we would likely want to encapsulate these parameters in a record so that the
 code remains clean.
 
 
+------------------
 4.3 GhcndData Type
 ------------------
 
@@ -496,6 +510,7 @@ service, we have a record called GhcndData:
 JSON can then be decoded into such a structure as we shall see.
 
 
+-----------------
 4.4 Initial Model
 -----------------
 
@@ -523,9 +538,10 @@ and so we pass Cmd.none to indicate this.
 
 
 
-======================
+================================================================================
 5 - Updating the Model
-======================
+================================================================================
+
 
 The Msg type is defined with our application specific messages,
 which will be sent to the update function when the app state 
@@ -556,6 +572,7 @@ Most of the generated models take no further action, GetWeather
 being the exception.
 
 
+-----------------------
 5.1 Getting the Weather
 -----------------------
 
@@ -639,6 +656,7 @@ text to the returned results or to an error message.
 In the case of success or error, the chain of actions stops here.
 
 
+------------------
 5.2 Other Messages
 ------------------
 
@@ -662,9 +680,10 @@ other values in the model.
 
 
 
-==============================
+================================================================================
 6 - Displaying the Model State
-==============================
+================================================================================
+
 
 Details of the Elm view function and HTML functions were covered in Section 2. 
 For this application, we define the view function as follows:
@@ -708,6 +727,7 @@ in the model and because of their length, merited their own series of function
 calls.
 
 
+-------------------------------
 6.1 Displaying the Result Count
 -------------------------------
 
@@ -788,6 +808,7 @@ If the value is Ok, it will be displayed in our view, and if not, we see
 the error message.
 
 
+-------------------------------
 6.2 Displaying the Weather Data
 -------------------------------
 
@@ -986,9 +1007,10 @@ makeGhcndTableBody listOfValues =
   
 
 
-================
+================================================================================
 7 Final Thoughts
-================
+================================================================================
+
 
 The next steps for this app will be to refactor it so that the model is more
 generalized, so that we can add other datasets from the NCDC API easily.
